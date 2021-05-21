@@ -1,0 +1,4 @@
+hw3-code/.idea/
+hw3-code/cmake-build-debug
+hw3-code/*.o
+hw3-code/*.out
