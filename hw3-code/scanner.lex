@@ -1,7 +1,8 @@
 %{
 
 /* Declarations section */
-#include "output.hpp"
+#include "structs.hpp"
+#include "hw3-output.hpp"
 #include "parser.tab.hpp"
 using namespace output;
 %}

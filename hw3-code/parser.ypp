@@ -1,11 +1,17 @@
 %{
-	#include "output.hpp"
+    #include "hw3-output.hpp"
+    #include "sym_tables.hpp"
+    #include "structs.hpp"
 
 	using namespace output;
 
 	extern int yylineno;
 	int yyerror(const char * message);
     extern int yylex();
+
+
+    SymbolTable symbolTable = SymbolTable();
+    string curr_func_ret_type;
 %}
 
 %token VOID
@@ -28,100 +34,106 @@
 %token COLON
 %token SC
 %token COMMA
-
 %token LBRACE
 %token RBRACE
-
 %token ID
 %token NUM
 %token STRING
 
 %right ASSIGN
-
 %left OR
 %left AND
-
 %left RELOP_EQ
 %nonassoc RELOP_REL
-
 %left BINOP_ADD
 %left BINOP_MUL
-
 %right NOT
-
-/* TODO: understand why not left or right */
 %nonassoc RPAREN
 %nonassoc LPAREN
 %nonassoc ELSE
 
+%type<exp> Exp;
+%type<exp> Type;
+%type<exp> RetType;
+%type<funcArgsList> FormalsList;
+%type<funcArgsList> Formals;
+%type<funcArg> FormalDecl;
+%type<typeList> ExpList;
+%type<exp> Call;
+%type<id> ID;
+%type<exp> NUM;
+%type<exp> NUM_WITH_VAL;
+
 %%
 
-Program     :   Funcs               {}
+Program     :   M1 Funcs                                                    {close_global_scope();}
 
-Funcs       :   FuncDecl Funcs      {}
-            |   /* epsilon */       {}
+M1          :   /* epsilon */                                               {symbolTable.open_first_scope()}
+
+Funcs       :   FuncDecl Funcs                                              {   /* open another scope for next func */   }
+            |   /* epsilon */                                               {   /* get params for the func */   }
 
 FuncDecl    :   RetType ID LPAREN Formals RPAREN LBRACE Statements RBRACE   {}
 
-RetType     :   Type        {}
-            |   VOID        {}
+RetType     :   Type                                                        {}
+            |   VOID                                                        {}
 
-Formals     :   FormalsList     {}
-            |   /* epsilon */   {}
+Formals     :   FormalsList                                                 {}
+            |   /* epsilon */                                               {}
 
-FormalsList     :   FormalDecl      {}
-                |   FormalDecl COMMA FormalsList        {}
+FormalsList     :   FormalDecl                                              {}
+                |   FormalDecl COMMA FormalsList                            {}
 
-FormalDecl      : Type ID    {}
+FormalDecl      : Type ID                                                   {}
 
-Statements      :   Statement       {}
-                |   Statements Statement        {}
+Statements      :   Statement                                               {}
+                |   Statements Statement                                    {}
 
-Statement       :   LBRACE Statements RBRACE       {}
-                |   Type ID SC        {}
-                |   Type ID ASSIGN Exp SC        {}
-                |   ID ASSIGN Exp SC        {}
-                |   Call SC        {}
-                |   RETURN SC        {}
-                |   RETURN Exp SC        {}
-                |   IF LPAREN Exp RPAREN Statement        {printProductionRule(21);}
-                |   IF LPAREN Exp RPAREN Statement ELSE Statement        {printProductionRule(22);}
-                |   WHILE LPAREN Exp RPAREN Statement        {printProductionRule(23);}
-                |   BREAK SC        {printProductionRule(24);}
-                |   CONTINUE SC        {printProductionRule(25);}
-                |   SWITCH LPAREN Exp RPAREN LBRACE CaseList RBRACE        {printProductionRule(26);}
+Statement       :   LBRACE Statements RBRACE                                {}
+                |   Type ID SC                                              {}
+                |   Type ID ASSIGN Exp SC                                   {}
+                |   ID ASSIGN Exp SC                                        {}
+                |   Call SC                                                 {}
+                |   RETURN SC                                               {}
+                |   RETURN Exp SC                                           {}
+                |   IF LPAREN Exp RPAREN Statement                          {}
+                |   IF LPAREN Exp RPAREN Statement ELSE Statement           {}
+                |   WHILE LPAREN Exp RPAREN Statement                       {}
+                |   BREAK SC                                                {}
+                |   CONTINUE SC                                             {}
+                |   SWITCH LPAREN Exp RPAREN LBRACE CaseList RBRACE         {}
 
-Call        :   ID LPAREN ExpList RPAREN       {printProductionRule(27);}
-            |   ID LPAREN RPAREN        {printProductionRule(28);}
+Call        :   ID LPAREN ExpList RPAREN                                    {}
+            |   ID LPAREN RPAREN                                            {}
 
-ExpList     :   Exp     {printProductionRule(29);}
-            |   Exp COMMA ExpList       {printProductionRule(30);}
+ExpList     :   Exp                                                         {}
+            |   Exp COMMA ExpList                                           {}
 
-Type        :   INT     {printProductionRule(31);}
-            |   BYTE       {}
-            |   BOOL       {}
+Type        :   INT                                                         {}
+            |   BYTE                                                        {}
+            |   BOOL                                                        {}
 
-Exp         :   LPAREN Exp RPAREN       {}
-            |   Exp BINOP_ADD Exp       {}
-            |   Exp BINOP_MUL Exp       {}
-            |   ID       {}
-            |   Call       {printProductionRule(37);}
-            |   NUM       {printProductionRule(38);}
-            |   NUM B       {printProductionRule(39);}
-            |   STRING       {printProductionRule(40);}
-            |   TRUE       {printProductionRule(41);}
-            |   FALSE       {printProductionRule(42);}
-            |   NOT Exp       {printProductionRule(43);}
-            |   Exp AND Exp       {printProductionRule(44);}
-            |   Exp OR Exp       {printProductionRule(45);}
-            |   Exp RELOP_EQ Exp       {printProductionRule(46);}
-            |   Exp RELOP_REL Exp       {printProductionRule(46);}
+Exp         :   LPAREN Exp RPAREN                                           {}
+            |   Exp BINOP_ADD Exp                                           {}
+            |   Exp BINOP_MUL Exp                                           {}
+            |   ID                                                          {}
+            |   Call                                                        {}
+            |   NUM                                                         {}
+            |   NUM B                                                       {}
+            |   STRING                                                      {}
+            |   TRUE                                                        {}
+            |   FALSE                                                       {}
+            |   NOT Exp                                                     {}
+            |   Exp AND Exp                                                 {}
+            |   Exp OR Exp                                                  {}
+            |   Exp RELOP_EQ Exp                                            {}
+            |   Exp RELOP_REL Exp                                           {}
 
-CaseList         :   CaseDecl CaseList       {printProductionRule(47);}
-                 |   CaseDecl       {printProductionRule(48);}
-                 |   DEFAULT COLON Statements       {printProductionRule(49);}
+CaseList         :   CaseDecl CaseList                                      {}
+                 |   CaseDecl                                               {}
+                 |   DEFAULT COLON Statements                               {}
 
-CaseDecl        :   CASE NUM COLON Statements       {printProductionRule(50);}
+CaseDecl        :   CASE NUM COLON Statements                               {}
 
 %%
 
