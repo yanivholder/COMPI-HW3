@@ -8,10 +8,14 @@
 	extern int yylineno;
 	int yyerror(const char * message);
     extern int yylex();
-
+    Exp* do_op(Exp* var1, Exp* var2, string op); 
+    void vaildate_type(string x, string y);
+    FuncSymbol* get_func(string name, std::vector<string> type_list);
 
     SymbolTable symbolTable = SymbolTable();
     string curr_func_ret_type;
+    bool during_while = false;
+    bool during_switch = false;
 %}
 
 %token VOID
@@ -55,74 +59,115 @@
 
 %%
 
-Program     :   M1 Funcs                                                    {}
 
-M1          :   /* epsilon */                                               {}
+Program     :   Funcs                                                       { symbolTable.close_global_scope();}
 
-Funcs       :   FuncDecl Funcs                                              {   /* open another scope for next func */   }
-            |   /* epsilon */                                               {   /* get params for the func */   }
+Funcs       :   FuncDecl Funcs                                              {   /*  */   }
+            |   /* epsilon */                                               {   /* after last func was declared */   }
 
-FuncDecl    :   RetType ID LPAREN Formals RPAREN LBRACE Statements RBRACE   {}
+FuncDecl    :   RetType ID LPAREN Formals RPAREN                            { symbolTable.add_func_symbol($2.m_name, $1.m_type, $4.m_argsList);}
 
-RetType     :   Type                                                        {}
-            |   VOID                                                        {}
+                LBRACE                                                      { symbolTable.open_scope();
+                                                                              curr_func_ret_type = $1.m_type;
+                                                                              symbolTable.add_func_args($4->m_argsList);
+                                                                            }
 
-Formals     :   FormalsList                                                 {}
-            |   /* epsilon */                                               {}
+                Statements RBRACE                                           {   /* full single func declaration */
+                                                                                curr_func_ret_type = NULL;
+                                                                                symbolTable.close_scope();
+                                                                            }
 
-FormalsList     :   FormalDecl                                              {}
-                |   FormalDecl COMMA FormalsList                            {}
+RetType     :   Type                                                        { $$ = new Exp($1->m_type); }
+            |   VOID                                                        { $$ = new Exp("VOID"); }
 
-FormalDecl      : Type ID                                                   {}
+Formals     :   FormalsList                                                 { $$ = new FuncArgsList($1->m_argsList); }
+            |   /* epsilon */                                               { $$ = new FuncArgsList(); }
+
+FormalsList     :   FormalDecl                                              { $$ = new FuncArgsList();
+                                                                              $$->m_argsList.push_back(StrPair($1->m_arg)); }
+                |   FormalDecl COMMA FormalsList                            { $$->m_argsList.push_back(StrPair($1->m_arg));}
+
+FormalDecl      : Type ID                                                   { $$ = new FuncArg($1->m_type, $2->m_name); }
 
 Statements      :   Statement                                               {}
                 |   Statements Statement                                    {}
 
-Statement       :   LBRACE Statements RBRACE                                {}
-                |   Type ID SC                                              {}
-                |   Type ID ASSIGN Exp SC                                   {}
-                |   ID ASSIGN Exp SC                                        {}
+Statement       :   LBRACE OpenScope Statements RBRACE CloseScope           {}
+                |   Type ID SC                                              {   symbolTable.add_var_symbol($2->m_name, $1->m_type); }
+                |   Type ID ASSIGN Exp SC                                   {
+                                                                                do_op($1, $4, "ASSIGN"); 
+                                                                                symbolTable.add_var_symbol($2->m_name, $1->m_type);
+                                                                            }
+                |   ID ASSIGN Exp SC                                        {   vaildate_type(symbolTable.search_symbol($1->m_name,false)->m_type, $3->m_type); }
                 |   Call SC                                                 {}
-                |   RETURN SC                                               {}
-                |   RETURN Exp SC                                           {}
-                |   IF LPAREN Exp RPAREN Statement                          {}
-                |   IF LPAREN Exp RPAREN Statement ELSE Statement           {}
-                |   WHILE LPAREN Exp RPAREN Statement                       {}
-                |   BREAK SC                                                {}
-                |   CONTINUE SC                                             {}
-                |   SWITCH LPAREN Exp RPAREN LBRACE CaseList RBRACE         {}
+                |   RETURN SC                                               {   vaildate_type(curr_func_ret_type, "VOID"); }
+                |   RETURN Exp SC                                           {   vaildate_type($2->m_type, curr_func_ret_type); }
+                |   IF LPAREN Exp RPAREN                                    {   vaildate_type($3->m_type, "BOOL");
+                                                                                symbolTable.open_scope();
+                                                                            }
+                    Statement                                               {   symbolTable.close_scope(); }
+                |   IF LPAREN Exp RPAREN Statement ELSE Statement           {
+                                                                                vaildate_type($3->m_type, "BOOL");
+                                                                                symbolTable.open_scope();
+                                                                            }
+                |   WHILE LPAREN Exp RPAREN                                 { 
+                                                                                vaildate_type($3->m_type, "BOOL");
+                                                                                during_while = true;
+                                                                                symbolTable.open_scope(); }
+                    Statement                                               {   
+                                                                                symbolTable.close_scope();
+                                                                                during_while = false;
+                                                                            }
+                |   BREAK SC                                                {   if(!during_while) {errorUnexpectedBreak(yylineno)}; }
+                |   CONTINUE SC                                             {   if(!during_while) {errorUnexpectedContinue(yylineno)}; }
+                |   SWITCH LPAREN Exp RPAREN                                {   vaildate_type($3->m_type, "BOOL");
+                                                                                during_switch = true; }
+                    LBRACE OpenScope CaseList RBRACE CloseScope             {   during_switch = false; }
 
-Call        :   ID LPAREN ExpList RPAREN                                    {}
-            |   ID LPAREN RPAREN                                            {}
+Call        :   ID LPAREN ExpList RPAREN                                    {
+                                                                                FuncSymbol* f = get_func($1->m_name, $3->m_typeList);
+                                                                                $$ = new Exp(f->return_type); 
+                                                                            }
+            |   ID LPAREN RPAREN                                            {
+                                                                                FuncSymbol* f = get_func($1->m_name, std::vector<string>());
+                                                                                $$ = new Exp(f->return_type); 
+                                                                            }
 
-ExpList     :   Exp                                                         {}
-            |   Exp COMMA ExpList                                           {}
+ExpList     :   Exp                                                         { $$ = new TypeList();
+                                                                              $$->m_typeList.push_back($1->m_type);
+                                                                            }
+            |   Exp COMMA ExpList                                           {  $1->m_typeList.push_back($3->m_type);}
 
-Type        :   INT                                                         {}
-            |   BYTE                                                        {}
-            |   BOOL                                                        {}
+Type        :   INT                                                         { $$ = new Exp("INT"); }
+            |   BYTE                                                        { $$ = new Exp("BYTE"); }
+            |   BOOL                                                        { $$ = new Exp("BOOL"); }
 
-Exp         :   LPAREN Exp RPAREN                                           {}
-            |   Exp BINOP_ADD Exp                                           {}
-            |   Exp BINOP_MUL Exp                                           {}
-            |   ID                                                          {}
-            |   Call                                                        {}
-            |   NUM                                                         {}
-            |   NUM B                                                       {}
-            |   STRING                                                      {}
-            |   TRUE                                                        {}
-            |   FALSE                                                       {}
-            |   NOT Exp                                                     {}
-            |   Exp AND Exp                                                 {}
-            |   Exp OR Exp                                                  {}
-            |   Exp RELOP_EQ Exp                                            {}
-            |   Exp RELOP_REL Exp                                           {}
+Exp         :   LPAREN Exp RPAREN                                           { $$ = new Exp($2->m_type); }
+            |   Exp BINOP_ADD Exp                                           { $$ = do_op($1, $3, "BINOP");}
+            |   Exp BINOP_MUL Exp                                           { $$ = do_op($1, $3, "BINOP");}
+            |   ID                                                          { $$ = new Exp(symbolTable.search_symbol($1->m_name, false)->type);
+                                                                              $$->m_varName = $1->m_name; }
+            |   Call                                                        { $$ = new Exp($1->m_type); }
+            |   NUM                                                         { $$ = new Exp("INT"); }
+            |   NUM B                                                       { $$ = new Exp("BYTE"); }
+            |   STRING                                                      { $$ = new Exp("STRING"); }
+            |   TRUE                                                        { $$ = new Exp("BOOL"); }
+            |   FALSE                                                       { $$ = new Exp("BOOL"); }
+            |   NOT Exp                                                     { $$ = do_op($1, $1, "NOT"); }
+            |   Exp AND Exp                                                 { $$ = do_op($1, $3, "AND"); }
+            |   Exp OR Exp                                                  { $$ = do_op($1, $3, "OR"); }
+            |   Exp RELOP_EQ Exp                                            { $$ = do_op($1, $3, "RELOP"); }
+            |   Exp RELOP_REL Exp                                           { $$ = do_op($1, $3, "RELOP"); }
 
-CaseList         :   CaseDecl CaseList                                      {}
+CaseList         :   CaseDecl CaseList                                      {} /* look at staff tests for clarification */
                  |   CaseDecl                                               {}
                  |   DEFAULT COLON Statements                               {}
 
 CaseDecl        :   CASE NUM COLON Statements                               {}
+
+OpenScope   :   /* epsilon */                                               { symbolTable.open_scope(); }
+CloseScope  :   /* epsilon */                                               { symbolTable.close_scope(); }
+
 
 %%
 
@@ -133,4 +178,74 @@ int main() {
 int yyerror(const char* message) {
 	errorSyn(yylineno);
 	exit(1);
+}
+
+bool is_number(Exp* var){
+    if (var->m_type == "INT" || var->m_type == "BYTE")
+        return true;
+    else
+        return false;
+}
+
+Exp* do_op(Exp* var1, Exp* var2, string op){
+    switch(op){
+        case("ASSIGN"):
+            if (var1->m_type == var2->m_type || (var1->m_type == "INT" && var2->m_type == "BYTE"))
+                return new Exp*(var1->m_type);
+            break;
+
+        case("RELOP"):
+            if (is_number(var1) && is_number(var2))
+                return new Exp*("BOOL");
+            break;
+
+         case("AND"): case("OR"):
+            if (var1->m_type == "BOOL" && var2->m_type == "BOOL")
+                return new Exp*("BOOL");
+            break;
+
+        case("NOT"):
+            if (var1->m_type == "BOOL")
+                return new Exp*("BOOL");
+            break;
+
+        case("BINOP"):
+            if (is_number(var1) && is_number(var2)){
+                if(var1->m_type == "INT" || var2->m_type == "INT")
+                    return new Exp*("INT");
+                else
+                    return new Exp*("BOOL");
+            }
+            break;
+    }
+    output::errorMismatch(yylineno);
+    exit(0);
+}
+
+void vaildate_type(string x, string y){
+    if (x != y)
+    {
+        output::errorMismatch(yylineno);
+        exit(0);
+    }
+}
+
+
+
+FuncSymbol* get_func(string name, std::vector<string> type_list){
+    FuncSymbol* f = (FuncSymbol*)(symbolTable.search_symbol(name, true));
+    if (f == nullptr) {
+        output::errorMismatch(yylineno);
+        exit(0);
+    }
+    vaildate_func(f->args_type, type_list, f->name);
+    return f;
+}
+
+void vaildate_func(std::vector<string> expected, std::vector<string> current, string name){
+    if (expected != current)
+    {
+        output::errorPrototypeMismatch(yylineno, name, expected);
+        exit(0);
+    }
 }
