@@ -45,20 +45,26 @@ default                     return DEFAULT;
 \}                          return RBRACE;
 =                           return ASSIGN;
 ==|!=                       return RELOP_EQ;
-\<|\>|\<=|\>=                   return RELOP_REL;
+\<|\>|\<=|\>=               return RELOP_REL;
 \+|\-                       return BINOP_ADD;
 \*|\/                       return BINOP_MUL;
-{letter}({letter}|{digit})* return ID;
-0|({nonzerodigit}{digit}*)  return NUM;
+{letter}({letter}|{digit})* {
+                                string name(yytext);
+                                yylval.id = new Id(name);
+                                return ID;
+                            }
+0|({nonzerodigit}{digit}*)  {
+                                yylval.val = atoi(yytext);
+                                return NUM;
+                            }
 \"([^\n\r\"\\]|\\[rnt\"\\])+\"	return STRING;
-
-
-
 
 [\t\r\n ]                ;
 \/\/[^\r\n]*(\r|\n|\r\n)?  ;
 
-
-.                           {errorLex(yylineno); exit(1);}
+.                           {
+                                output::errorLex(yylineno);
+                                exit(1);
+                            }
 
 %%

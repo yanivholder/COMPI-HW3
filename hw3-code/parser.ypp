@@ -52,23 +52,12 @@
 %nonassoc LPAREN
 %nonassoc ELSE
 
-%type<exp> Exp;
-%type<exp> Type;
-%type<exp> RetType;
-%type<funcArgsList> FormalsList;
-%type<funcArgsList> Formals;
-%type<funcArg> FormalDecl;
-%type<typeList> ExpList;
-%type<exp> Call;
-%type<id> ID;
-%type<exp> NUM;
-%type<exp> NUM_WITH_VAL;
 
 %%
 
-Program     :   M1 Funcs                                                    {close_global_scope();}
+Program     :   M1 Funcs                                                    {}
 
-M1          :   /* epsilon */                                               {symbolTable.open_first_scope()}
+M1          :   /* epsilon */                                               {}
 
 Funcs       :   FuncDecl Funcs                                              {   /* open another scope for next func */   }
             |   /* epsilon */                                               {   /* get params for the func */   }
