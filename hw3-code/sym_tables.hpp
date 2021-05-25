@@ -32,8 +32,8 @@ public:
 
 class FuncSymbol : public Symbol {
 public:
-    StrVec args_type;
-    string return_type;
+    StrVec args_type = StrVec();
+    string return_type = "";
     FuncSymbol(string name, string return_type, StrVec& args_type);
     void print() override;
 };
