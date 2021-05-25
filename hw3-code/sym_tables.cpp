@@ -5,8 +5,7 @@
 #include "sym_tables.hpp"
 #include "hw3-output.hpp"
 
-// TODO erase comment
-// extern int yylineno;
+ extern int yylineno;
 
 Symbol::Symbol(string name, string type, int offset) : name(name), type(type), offset(offset) {}
 
@@ -22,7 +21,7 @@ FuncSymbol::FuncSymbol(string name, string return_type, StrVec& args_type) :
     Symbol(name, "FUNC", 0), return_type(return_type), args_type(args_type) {}
 
 void FuncSymbol::print() {
-    output::printID(name, offset, output::makeFunctionType(type, args_type));
+    output::printID(name, offset, output::makeFunctionType(return_type, args_type));
 }
 
 SymbolTable::SymbolTable() {
@@ -57,16 +56,18 @@ Symbol* SymbolTable::search_symbol(const string& name, bool is_func) {
     return nullptr;
 }
 
-Symbol* SymbolTable::search_symbol_in_scope(const string& name, bool is_func) {
-    for (auto symbol_it = (tables_stack.back())->symbols.rbegin(); symbol_it != (tables_stack.back())->symbols.rend(); symbol_it++) {
-        if(is_func) {
-            if ((*symbol_it)->name == name && (*symbol_it)->type == "FUNC") {
-                return (*symbol_it);
+Symbol* SymbolTable::search_symbol_in_all_scopes(const string& name, bool is_func) {
+    for (auto table_it = tables_stack.rbegin(); table_it != tables_stack.rend(); table_it++) {
+        for (auto symbol_it = (*table_it)->symbols.rbegin(); symbol_it != (*table_it)->symbols.rend(); symbol_it++) {
+            if(is_func) {
+                if ((*symbol_it)->name == name && (*symbol_it)->type == "FUNC") {
+                    return (*symbol_it);
+                }
             }
-        }
-        else {
-            if ((*symbol_it)->name == name && (*symbol_it)->type != "FUNC") {
-                return (*symbol_it);
+            else {
+                if ((*symbol_it)->name == name && (*symbol_it)->type != "FUNC") {
+                    return (*symbol_it);
+                }
             }
         }
     }
@@ -116,9 +117,9 @@ void SymbolTable::add_var_symbol(const string& name, const string& type) {
 void SymbolTable::add_func_symbol(const string& name, const string& return_type, StrPairVec& args) {
     check_name_not_exists_in_scope(name, true);
     StrVec args_type = StrVec();
-    for(auto arg : args) {
-        check_name_not_exists_in_scope(arg.second, false);
-        args_type.push_back(arg.first);
+    for(auto arg_it = args.rbegin(); arg_it != args.rend(); arg_it++) {
+        check_name_not_exists_in_scope((*arg_it).second, false);
+        args_type.push_back((*arg_it).first);
     }
     auto* f = new FuncSymbol(name, return_type, args_type);
     tables_stack.back()->symbols.push_back(f);
@@ -126,17 +127,16 @@ void SymbolTable::add_func_symbol(const string& name, const string& return_type,
 
 void SymbolTable::add_func_args(StrPairVec& args) {
     int args_offset = -1;
-    for(auto arg : args) {
-        check_name_not_exists_in_scope(arg.second, false);
-        auto* s = new VarSymbol(arg.second, arg.first, args_offset);
+    for(auto arg_it = args.rbegin(); arg_it != args.rend(); arg_it++) {
+        check_name_not_exists_in_scope((*arg_it).second, false);
+        auto* s = new VarSymbol((*arg_it).second, (*arg_it).first, args_offset);
         tables_stack.back()->symbols.push_back(s);
         args_offset -= 1;
     }
 }
 
 void SymbolTable::check_name_not_exists_in_scope(const string& name, bool is_func) {
-    if(search_symbol_in_scope(name, is_func) != nullptr) {
-        int yylineno = 5; // TODO erase
+    if(search_symbol_in_all_scopes(name, is_func) != nullptr || search_symbol_in_all_scopes(name, !is_func) != nullptr) {
         output::errorDef(yylineno ,name);
         exit(1);
     }

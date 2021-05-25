@@ -58,7 +58,7 @@ public:
 
     SymbolTable();
     Symbol* search_symbol(const string& name, bool is_func);
-    Symbol* search_symbol_in_scope(const string& name, bool is_func);
+    Symbol* search_symbol_in_all_scopes(const string& name, bool is_func);
     void open_scope();
     void open_first_scope();
     void close_scope();
