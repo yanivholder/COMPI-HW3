@@ -28,6 +28,7 @@
 
     SymbolTable symbolTable = SymbolTable();
     string curr_func_ret_type("");
+    string curr_exp_type("");
     int during_while = 0;
     int during_switch = 0;
 
@@ -150,9 +151,9 @@ Statement       :   LBRACE OpenScope Statements RBRACE CloseScope           { }
                 |   Call SC                                                 { }
                 |   RETURN SC                                               { vaildate_type(curr_func_ret_type, "VOID"); }
                 |   RETURN Exp SC                                           { validate_assign(curr_func_ret_type, $2->m_type); }
-                |   IF LPAREN Exp RPAREN OpenScope Statement CloseScope     { vaildate_type($3->m_type, "BOOL"); }
-                |   IF LPAREN Exp RPAREN OpenScope Statement CloseScope
-                ELSE OpenScope Statement CloseScope                         { vaildate_type($3->m_type, "BOOL"); }
+                |   IF LPAREN Exp RPAREN mark OpenScope Statement CloseScope
+                |   IF LPAREN Exp RPAREN mark OpenScope Statement CloseScope
+                ELSE OpenScope Statement CloseScope
                 |   WHILE LPAREN Exp RPAREN                                 {
                                                                                 vaildate_type($3->m_type, "BOOL");
                                                                                 during_while++;
@@ -168,6 +169,9 @@ Statement       :   LBRACE OpenScope Statements RBRACE CloseScope           { }
                                                                                 during_switch++;
                                                                             }
                     LBRACE OpenScope CaseList RBRACE CloseScope             {   during_switch--; }
+
+mark        : { vaildate_type(curr_exp_type, "BOOL"); }
+
 
 Call        :   ID LPAREN ExpList RPAREN                                    {
                                                                                 FuncSymbol* f = get_func($1->m_name, $3->m_typeList);
@@ -192,31 +196,33 @@ Type        :   INT                                                         { $$
             |   BYTE                                                        { $$ = new Exp("BYTE"); }
             |   BOOL                                                        { $$ = new Exp("BOOL"); }
 
-Exp         :   LPAREN Exp RPAREN                                           { $$ = new Exp($2->m_type); }
-            |   Exp BINOP_ADD Exp                                           { $$ = do_op($1, $3, PBINOP);}
-            |   Exp BINOP_MUL Exp                                           { $$ = do_op($1, $3, PBINOP);}
+Exp         :   LPAREN Exp RPAREN                                           { $$ = new Exp($2->m_type); curr_exp_type = "INT"; }
+            |   Exp BINOP_ADD Exp                                           { $$ = do_op($1, $3, PBINOP); curr_exp_type = "INT"; }
+            |   Exp BINOP_MUL Exp                                           { $$ = do_op($1, $3, PBINOP); curr_exp_type = "INT"; }
             |   ID                                                          {
                                                                               string type = get_var_type($1->m_name);
                                                                               $$ = new Exp(type);
                                                                               $$->m_varName = $1->m_name;
+                                                                              curr_exp_type = type;
                                                                             }
-            |   Call                                                        { $$ = new Exp($1->m_type); }
-            |   NUM                                                         { $$ = new Exp("INT"); }
+            |   Call                                                        { $$ = new Exp($1->m_type); curr_exp_type = $1->m_type; }
+            |   NUM                                                         { $$ = new Exp("INT"); curr_exp_type = "INT"; }
             |   NUM B                                                       {
                                                                                 if (yylval.val > 255) {
                                                                                     errorByteTooLarge(yylineno, to_string(yylval.val));
                                                                                     exit(1);
                                                                                 }
                                                                                 $$ = new Exp("BYTE");
+                                                                                curr_exp_type = "BYTE";
                                                                             }
-            |   STRING                                                      { $$ = new Exp("STRING"); }
-            |   TRUE                                                        { $$ = new Exp("BOOL"); }
-            |   FALSE                                                       { $$ = new Exp("BOOL"); }
-            |   NOT Exp                                                     { $$ = do_op($2, $2, PNOT); }
-            |   Exp AND Exp                                                 { $$ = do_op($1, $3, PAND); }
-            |   Exp OR Exp                                                  { $$ = do_op($1, $3, POR); }
-            |   Exp RELOP_EQ Exp                                            { $$ = do_op($1, $3, PRELOP); }
-            |   Exp RELOP_REL Exp                                           { $$ = do_op($1, $3, PRELOP); }
+            |   STRING                                                      { $$ = new Exp("STRING"); curr_exp_type = "STRING";}
+            |   TRUE                                                        { $$ = new Exp("BOOL"); curr_exp_type = "BOOL"; }
+            |   FALSE                                                       { $$ = new Exp("BOOL"); curr_exp_type = "BOOL"; }
+            |   NOT Exp                                                     { $$ = do_op($2, $2, PNOT); curr_exp_type = "BOOL"; }
+            |   Exp AND Exp                                                 { $$ = do_op($1, $3, PAND); curr_exp_type = "BOOL"; }
+            |   Exp OR Exp                                                  { $$ = do_op($1, $3, POR); curr_exp_type = "BOOL"; }
+            |   Exp RELOP_EQ Exp                                            { $$ = do_op($1, $3, PRELOP); curr_exp_type = "BOOL"; }
+            |   Exp RELOP_REL Exp                                           { $$ = do_op($1, $3, PRELOP); curr_exp_type = "BOOL"; }
 
 CaseList         :   CaseDecl CaseList                                      { }
                  |   CaseDecl                                               { }
@@ -240,7 +246,7 @@ int yyerror(const char* message) {
 	exit(1);
 }
 
-bool is_number(Exp* var){
+bool is_number(Exp* var) {
     if (var->m_type == "INT" || var->m_type == "BYTE")
         return true;
     else
@@ -248,7 +254,8 @@ bool is_number(Exp* var){
 }
 
 void validate_assign(string var1, string var2) {
-    if(!(var1 == var2 || (var1 == "INT" && var2 == "BYTE"))) {
+
+    if(var1 == "VOID" || !(var1 == var2 || (var1 == "INT" && var2 == "BYTE"))) {
         errorMismatch(yylineno);
         exit(1);
     }
